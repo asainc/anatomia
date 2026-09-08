@@ -1,9 +1,10 @@
+import {obterNomeExibicao, type Atlas, type Conceito} from './anatomia.ts';
 import {
-  normalizarTexto,
-  obterNomeExibicao,
-  type Atlas,
-  type Conceito,
-} from './anatomia.ts';
+  buscarConceitos,
+  criarIndiceAnatomico,
+  nomeCategoria,
+  nomeRegiao,
+} from './dominio/catalogo-anatomico.ts';
 
 /** Contrato mínimo usado pela API opcional de ferramentas do navegador. */
 type Ferramenta = {
@@ -34,6 +35,8 @@ export function criarFerramentasAtlas(
   atlas: Atlas,
   inspecionar: (conceito: Conceito) => void,
 ): Ferramenta[] {
+  const indice = criarIndiceAnatomico(atlas);
+
   return [
     {
       name: 'buscar_anatomia',
@@ -52,24 +55,13 @@ export function criarFerramentasAtlas(
           throw new Error('Informe uma consulta não vazia.');
         }
 
-        const consulta = normalizarTexto(dados.consulta);
-        return atlas.conceitos
-          .filter((conceito) => {
-            const nomeOrigem = normalizarTexto(conceito.nome);
-            const nomeExibicao = normalizarTexto(obterNomeExibicao(conceito.nome));
-            return (
-              nomeOrigem.includes(consulta) ||
-              nomeExibicao.includes(consulta) ||
-              conceito.id.toLowerCase().includes(consulta)
-            );
-          })
-          .slice(0, 30)
-          .map((conceito) => ({
-            id: conceito.id,
-            nome: obterNomeExibicao(conceito.nome),
-            nomeFonte: conceito.nome,
-            quantidadePecas: conceito.elementos.length,
-          }));
+        return buscarConceitos(indice, dados.consulta, 30).map((item) => ({
+          id: item.conceito.id,
+          nome: obterNomeExibicao(item.conceito.nome),
+          regiao: nomeRegiao(item.regiao),
+          categoria: nomeCategoria(item.categoria),
+          quantidadePecas: item.conceito.elementos.length,
+        }));
       },
     },
     {

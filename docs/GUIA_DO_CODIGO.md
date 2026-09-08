@@ -162,3 +162,77 @@ Offsets incorretos podem causar leitura fora dos limites ou geometria corrompida
 [ ] textos novos em português revisados
 [ ] atribuição BodyParts3D preservada
 ```
+
+## V2 — onde alterar cada recurso
+
+### Busca, sinônimos, região e categoria
+
+Edite:
+
+```text
+app/dominio/catalogo-anatomico.ts
+```
+
+Depois execute:
+
+```bash
+npm run testar:dominio
+```
+
+### Contrato do atlas
+
+Edite:
+
+```text
+app/dominio/schema-atlas.ts
+scripts/gerar-atlas-ptbr.py
+```
+
+Mantenha `schemaVersion` sincronizado e rode:
+
+```bash
+npm run testar:schema
+```
+
+### Preferências
+
+Edite:
+
+```text
+app/servicos/preferencias.ts
+```
+
+### Links compartilháveis
+
+Edite:
+
+```text
+app/servicos/navegacao-url.ts
+```
+
+### Hierarquia / preparação para residência / métricas
+
+Edite os componentes em:
+
+```text
+app/componentes/
+```
+
+### Foco, câmera, realce e performance Three.js
+
+Edite:
+
+```text
+app/cena.tsx
+```
+
+Evite criar uma malha renderizada por peça. A performance depende da combinação de geometrias e do estado por textura GPU.
+
+## Preparação para residência
+
+- `app/componentes/central-residencia.tsx`: fluxo de treino, simulado e painel de desempenho;
+- `app/dominio/estudo-residencia.ts`: regras puras de questões, revisão espaçada e caderno de erros;
+- `app/servicos/progresso-residencia.ts`: armazenamento local do histórico;
+- `scripts/testar-residencia.mjs`: regressões do módulo de estudo.
+
+Ao alterar regras de estudo, prefira modificar o domínio e cobri-lo com `npm run testar:residencia`, em vez de colocar regras dentro de `pagina.tsx`.

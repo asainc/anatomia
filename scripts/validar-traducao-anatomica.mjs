@@ -17,6 +17,7 @@ const registrar = (condicao, mensagem) => {
   if (!condicao) falhas.push(mensagem);
 };
 
+registrar(atlas.schemaVersion === '2.0', 'O manifesto não está no schemaVersion 2.0.');
 registrar(atlas.locale === 'pt-BR', 'O manifesto não está marcado como pt-BR.');
 registrar(atlas.sourceLocale === 'en', 'O idioma da fonte original não está registrado como en.');
 registrar(Array.isArray(atlas.concepts), 'A lista de conceitos não existe.');

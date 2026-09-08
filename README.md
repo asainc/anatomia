@@ -1,45 +1,48 @@
-# Atlas Anatômico Humano 3D
+# Atlas Anatômico Humano 3D — V2
 
-Aplicação web interativa para explorar a anatomia humana masculina adulta em 3D. O projeto utiliza React, TypeScript, Vite, Three.js e componentes shadcn/ui, com os modelos anatômicos derivados do **BodyParts3D 4.0**.
+Aplicação web interativa para explorar anatomia humana masculina adulta em 3D, baseada no **BodyParts3D 4.0**. A versão `0.7.0` utiliza React, TypeScript, Vite e Three.js e mantém todos os nomes anatômicos exibidos em **português do Brasil**.
 
-Esta versão foi adaptada para **português do Brasil**. O código de negócio, os estados, funções, tipos, controles, mensagens e documentação foram traduzidos e reorganizados para facilitar leitura e manutenção.
+## Principais recursos
 
-## O que a aplicação faz
-
-A aplicação permite:
-
-- visualizar o corpo humano em 3D;
-- orbitar, aproximar e afastar a câmera;
-- selecionar estruturas anatômicas diretamente no modelo;
-- ativar ou ocultar sistemas anatômicos;
-- exibir apenas o esqueleto ou os principais órgãos;
-- separar progressivamente as estruturas com o controle **Explodir anatomia**;
-- pesquisar estruturas por nome ou identificador do atlas;
-- pesquisar **todas as estruturas anatômicas pelos nomes em português do Brasil**, incluindo metacarpos, falanges, vasos, músculos e subdivisões;
-- isolar uma estrutura selecionada;
-- consultar descrições educacionais;
-- validar a integridade dos arquivos binários e das interações principais.
+- corpo humano 3D com órbita, zoom e seleção direta;
+- 2.234 peças modeladas e 3.432 conceitos anatômicos;
+- nomes anatômicos de exibição integralmente localizados para PT-BR;
+- busca por nome, FMA ID, sinônimos, termos sem acento e pequenos erros de digitação;
+- árvore `Sistema → Região → Categoria → Estrutura`;
+- foco automático da câmera ao selecionar uma estrutura;
+- isolamento da estrutura e visualização somente do sistema correspondente;
+- estruturas relacionadas com segundo nível de destaque visual;
+- comparação anatômica entre estrutura principal e estrutura relacionada;
+- vistas anterior, posterior, laterais, superior, inferior e três quartos;
+- central **Residência** com treino rápido, simulado, revisão espaçada e caderno de erros;
+- biblioteca com **53 guias anatômicos de prova** para marcos clínicos, correlações cirúrgicas e revisão orgânica;
+- **filtro automático do modelo** ao usar “Mostrar no modelo”: oculta peças externas ao guia, realça a principal e mantém todas as relacionadas visíveis;
+- Central **Avançado** com **53 rotas sequenciais**, 165 etapas e associações 3D para neuroanatomia, arterial, venosa, linfáticos, nervos periféricos e especialidades;
+- 5 formatos de questão: localização 3D, identificação visual, região, sistema e categoria;
+- filtros de estudo por sistema, região e dificuldade;
+- desempenho acumulado por sistema e métricas de retenção;
+- progresso de estudo salvo localmente no navegador;
+- modo explodido progressivo;
+- links compartilháveis por `#estrutura=FMA:...`;
+- persistência local de preferências visuais;
+- painel opcional de FPS, draw calls, triângulos, geometrias e texturas;
+- schema `2.0` validado antes do carregamento;
+- validações automatizadas e workflow de CI.
 
 ## Pré-requisitos
 
-Para executar a aplicação já empacotada, é necessário:
-
 - **Node.js 22.13.0 ou superior**;
-- **npm**, instalado junto com o Node.js;
-- navegador com suporte a **WebGL**.
+- npm;
+- navegador com WebGL.
 
-Python **não é necessário** para executar a aplicação. Ele só é usado caso seja necessário reconstruir os arquivos anatômicos a partir dos OBJ originais do BodyParts3D.
-
-Verifique o ambiente:
+Verifique:
 
 ```bash
 node --version
 npm --version
 ```
 
-A versão do Node.js deve ser `22.13.0` ou superior.
-
-## Execução local — caminho rápido
+## Execução local
 
 Na raiz do projeto:
 
@@ -48,109 +51,182 @@ npm ci
 npm run dev
 ```
 
-Depois, abra no navegador:
+Abra:
 
 ```text
 http://localhost:3016
 ```
 
-O comando `npm ci` instala exatamente as versões registradas no `package-lock.json`.
+Use `npm ci`, não `npm install --force` ou `--legacy-peer-deps`. As versões críticas de React/RSC são fixadas e validadas automaticamente.
 
 ## Validação completa
-
-Antes de publicar ou entregar alterações, execute:
 
 ```bash
 npm run validar
 ```
 
-Esse comando executa, nesta ordem:
+A sequência inclui:
 
-1. verificação de tipos TypeScript;
-2. validação de todos os rótulos anatômicos em PT-BR;
-3. validação da estrutura e dos buffers do atlas;
-4. validação das interações principais;
-5. build de produção.
+1. compatibilidade das dependências React/RSC;
+2. verificação TypeScript;
+3. teste do schema do manifesto;
+4. testes do domínio anatômico e da busca;
+5. testes da central de preparação para residência;
+6. testes dos guias anatômicos de prova;
+7. teste do filtro automático de visualização;
+8. testes da Central de Estudo Avançado;
+9. validação de localização PT-BR;
+10. validação estrutural/binária do atlas;
+11. testes de interação;
+12. build de produção.
 
-Também é possível executar cada etapa separadamente:
+Execução separada:
 
 ```bash
+npm run validar:dependencias
 npm run verificar
+npm run testar:schema
+npm run testar:dominio
+npm run testar:residencia
+npm run testar:guias
+npm run testar:marcos
+npm run testar:filtro-modelo
+npm run testar:avancado
 npm run validar:traducao
 npm run validar:atlas
 npm run validar:interacoes
 npm run build
 ```
 
-## Build de produção
+## Dependências React/RSC
 
-```bash
-npm run build
-```
-
-Os arquivos gerados ficam em:
+O projeto usa exatamente:
 
 ```text
-dist/
+react                     19.2.6
+react-dom                 19.2.6
+react-server-dom-webpack  19.2.6
 ```
 
-O conteúdo de `dist/` pode ser servido por um servidor HTTP estático compatível.
+`scripts/validar-dependencias.mjs` falha se uma dessas versões divergir ou se for usada com `^`/`~`.
 
 ## Estrutura principal
 
 ```text
-anatomy/
+atlas-anatomico-3d/
+├── .github/workflows/
+│   └── qualidade.yml
 ├── app/
-│   ├── anatomia.ts             # Tipos, sistemas, traduções e normalização do atlas
-│   ├── pagina.tsx              # Página principal e estado da interface
-│   ├── cena.tsx                # Renderização Three.js e interação com o modelo 3D
-│   ├── layout-explosao.ts      # Distribuição das peças no modo explodido
-│   ├── download-modelo.ts      # Download e descompactação dos blocos binários
-│   ├── ferramentas-agente.ts   # Integração opcional com ferramentas do navegador
-│   ├── toque-ponteiro.ts       # Diferencia toque de arraste/multitoque
-│   └── globals.css             # Estilos globais
-├── components/ui/              # Componentes de interface derivados de shadcn/ui
+│   ├── anatomia.ts
+│   ├── pagina.tsx
+│   ├── cena.tsx
+│   ├── dominio/
+│   │   ├── catalogo-anatomico.ts
+│   │   ├── estudo-detalhado.ts
+│   │   ├── estudo-residencia.ts
+│   │   ├── rotas-estudo-avancado.ts
+│   │   └── schema-atlas.ts
+│   ├── servicos/
+│   │   ├── navegacao-url.ts
+│   │   ├── preferencias.ts
+│   │   └── progresso-residencia.ts
+│   └── componentes/
+│       ├── arvore-anatomica.tsx
+│       ├── central-residencia.tsx
+│       ├── central-estudo-avancado.tsx
+│       └── metricas-cena.tsx
+├── components/ui/
 ├── docs/
-│   ├── ARQUITETURA.md
-│   ├── EXECUCAO_LOCAL.md
-│   └── GUIA_DO_CODIGO.md
-├── public/
-│   ├── models/                 # Manifesto e geometrias binárias
-│   └── ATTRIBUTION.md          # Créditos e licenças dos dados anatômicos
+├── public/models/
+│   ├── atlas.en.json
+│   ├── atlas.json
+│   └── body-*.bin(.gz)
 ├── scripts/
-│   ├── converter-anatomia.py
-│   ├── gerar-atlas-ptbr.py     # Gera os 5.666 rótulos PT-BR
-│   ├── traducao_anatomica.py   # Vocabulário e regras anatômicas
-│   ├── otimizar-anatomia.mjs
-│   ├── compactar-modelos.mjs
-│   ├── validar-atlas.mjs
+│   ├── gerar-atlas-ptbr.py
+│   ├── traducao_anatomica.py
+│   ├── testar-schema.mjs
+│   ├── testar-dominio.mjs
+│   ├── testar-residencia.mjs
+│   ├── testar-guias-estudo.mjs
+│   ├── testar-filtro-modelo.mjs
+│   ├── testar-estudo-avancado.mjs
+│   ├── validar-dependencias.mjs
 │   ├── validar-traducao-anatomica.mjs
+│   ├── validar-atlas.mjs
 │   └── validar-interacoes.mjs
-├── web/
-│   ├── index.html
-│   └── main.tsx
 ├── package.json
-├── package-lock.json
-├── tsconfig.json
-└── vite.config.ts
+└── package-lock.json
 ```
 
-## Como os nomes anatômicos são localizados
 
-A interface **não usa mais fallback em inglês**. O projeto possui dois manifestos:
+## Preparação para provas de residência
 
-- `public/models/atlas.en.json`: cópia preservada dos nomes originais, usada para rastreabilidade;
-- `public/models/atlas.json`: manifesto carregado pela aplicação, com todos os nomes de exibição em PT-BR.
+O botão **Residência** abre uma central de estudo de anatomia integrada ao modelo 3D. Ela oferece:
 
-A geração é determinística e pode ser refeita com:
+- **Treino rápido:** 10 questões mistas com feedback e explicação após cada resposta;
+- **Simulado:** 20 questões, cronômetro e feedback consolidado somente ao final;
+- **Revisão espaçada:** agenda estruturas já estudadas em intervalos de 1, 3, 7, 14, 30 e 60 dias conforme a sequência de acertos;
+- **Caderno de erros:** recupera conceitos em que o estudante já errou;
+- **Questões no 3D:** o aluno precisa localizar a estrutura diretamente no corpo;
+- **Identificação visual:** uma estrutura é destacada sem revelar seu nome;
+- **Classificação:** questões de região, sistema e categoria anatômica;
+- **Filtros:** sistema, região e nível fundamental/intermediário/avançado;
+- **Desempenho:** acerto global, estruturas estudadas, revisões pendentes, estruturas dominadas e desempenho por sistema.
+
+Todo o progresso é salvo em `localStorage`; nenhuma resposta do estudante é enviada para servidores. A central cobre **anatomia** e deve ser usada como complemento ao estudo das demais áreas cobradas nas provas de residência.
+
+
+Além das questões, o painel **Explorar por hierarquia** agora traz uma biblioteca de **Guias de prova** com 53 roteiros anatômicos, cobrindo cabeça e pescoço, neurovascular, tórax, abdome, pelve, membro superior, membro inferior e coluna. Cada guia apresenta:
+
+- resumo objetivo do tema;
+- instrução de visualização dentro do modelo 3D;
+- limites e componentes, quando aplicável;
+- pontos de alta incidência em residência;
+- correlação clínica/cirúrgica;
+- observação explícita quando a base 3D não possui uma malha isolada para determinada estrutura.
+
+
+### Mostrar no modelo — filtro automático
+
+Nos **Guias de prova**, o botão **Mostrar no modelo** não apenas abre a explicação. A aplicação agora:
+
+1. identifica todos os conceitos 3D associados ao guia;
+2. oculta automaticamente qualquer peça que não pertença ao conjunto;
+3. realça a estrutura principal;
+4. mantém as demais estruturas do guia com realce secundário;
+5. enquadra a câmera considerando todo o conjunto visível;
+6. preserva os sistemas que estavam ativos para que **Exibir anatomia ao redor** restaure o contexto anterior.
+
+O mesmo mecanismo é usado nas rotas do modo **Avançado**.
+
+Detalhes: [Preparação para residência](docs/PREPARACAO_RESIDENCIA.md).
+
+## Central de Estudo Avançado
+
+O botão **Avançado** abre 53 rotas anatômicas sequenciais com **165 etapas** e **804 associações 3D**. As rotas são filtráveis e pesquisáveis e cobrem:
+
+- neuroanatomia fina;
+- vascular arterial;
+- vascular venosa;
+- linfáticos;
+- nervos periféricos;
+- 12 roteiros integrados por especialidade.
+
+Cada etapa seleciona uma estrutura principal e realça até 20 estruturas relacionadas. Quando a malha específica não existe na base BodyParts3D, a aplicação usa âncoras anatômicas e informa a limitação explicitamente.
+
+Detalhes: [Estudo anatômico avançado](docs/ESTUDO_AVANCADO.md).
+
+## Localização anatômica
+
+A aplicação carrega `public/models/atlas.json`, que possui os nomes de exibição em PT-BR. `public/models/atlas.en.json` preserva os nomes originais apenas para rastreabilidade.
+
+Para regenerar:
 
 ```bash
 npm run localizar:atlas
 ```
 
-O script `scripts/traducao_anatomica.py` aplica equivalências anatômicas, regras para nomes compostos, lateralidade, ordinais e nomenclatura muscular. Cada item localizado também conserva `nameEn`, portanto IDs e nomes da fonte podem ser auditados sem mostrar inglês ao usuário.
-
-Exemplos presentes no catálogo gerado:
+Exemplos:
 
 - `metacarpal bone` → **metacarpo**;
 - `first metacarpal bone` → **metacarpo 1º**;
@@ -158,34 +234,29 @@ Exemplos presentes no catálogo gerado:
 - `inferior nasal concha` → **concha nasal inferior**;
 - `heart` → **coração**.
 
-A validação específica é executada por:
+A validação percorre os **3.432 conceitos e 2.234 partes** e bloqueia regressões inequívocas para inglês.
+
+## Build de produção
 
 ```bash
-npm run validar:traducao
+npm run build
 ```
 
-Ela percorre os **3.432 conceitos e 2.234 partes**, verifica a presença do nome PT-BR e do nome original para auditoria, bloqueia termos ingleses inequívocos e testa traduções obrigatórias de regressão. Termos cuja grafia é legitimamente idêntica em português e inglês, como `aorta`, `ulna`, `ureter`, `face` e `atlas`, são tratados como cognatos válidos.
+A saída é criada em `dist/`.
 
-Os nomes de propriedades exigidos por React, Three.js, Vite e outras bibliotecas permanecem conforme as respectivas APIs; essa regra não se aplica aos nomes anatômicos exibidos.
+## Dados e uso
 
-## Dados anatômicos
+O modelo é baseado no BodyParts3D, referência masculina adulta distribuída sob CC BY 4.0. A aplicação é educacional e **não deve ser usada para diagnóstico, planejamento cirúrgico ou decisão clínica**.
 
-O visualizador utiliza o **BodyParts3D 4.0**, uma referência anatômica masculina adulta licenciada sob **CC BY 4.0**. O modelo desta distribuição contém 2.234 malhas individuais e 3.432 conceitos nomeados.
-
-A geometria foi simplificada para uso no navegador, preservando cada malha de origem. Consulte os detalhes de licença e atribuição em [public/ATTRIBUTION.md](public/ATTRIBUTION.md).
-
-A aplicação é educacional. Ela **não deve ser utilizada como ferramenta de diagnóstico, planejamento cirúrgico ou decisão clínica**.
-
-## Documentação complementar
+## Documentação
 
 - [Execução local detalhada](docs/EXECUCAO_LOCAL.md)
-- [Arquitetura do projeto](docs/ARQUITETURA.md)
-- [Guia do código e fluxo de execução](docs/GUIA_DO_CODIGO.md)
+- [Arquitetura](docs/ARQUITETURA.md)
+- [Evolução V2](docs/EVOLUCAO_V2.md)
+- [Guia do código](docs/GUIA_DO_CODIGO.md)
 - [Decisões técnicas](docs/DECISOES_TECNICAS.md)
-- [Relatório de validação desta adaptação](docs/VALIDACAO.md)
-- [Mapa das principais renomeações](docs/MAPA_RENOMEACOES.md)
-- [Registro das alterações](CHANGELOG.md)
-
-## Licença
-
-O código original da aplicação é disponibilizado sob licença MIT. Os dados anatômicos possuem licença própria CC BY 4.0 e exigem preservação da atribuição ao serem redistribuídos.
+- [Validação](docs/VALIDACAO.md)
+- [Preparação para residência](docs/PREPARACAO_RESIDENCIA.md)
+- [Estudo anatômico avançado](docs/ESTUDO_AVANCADO.md)
+- [Mapa de renomeações](docs/MAPA_RENOMEACOES.md)
+- [Changelog](CHANGELOG.md)

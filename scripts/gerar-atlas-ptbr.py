@@ -29,6 +29,7 @@ for parte in atlas.get('parts', []):
     parte['nameEn'] = nome_original
     parte['name'] = traduzir_nome(nome_original)
 
+atlas['schemaVersion'] = '2.0'
 atlas['locale'] = 'pt-BR'
 atlas['sourceLocale'] = 'en'
 atlas['localization'] = {

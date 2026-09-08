@@ -1,3 +1,6 @@
+import {validarManifestoAtlas} from './dominio/schema-atlas.ts';
+import type {DestaqueClinico} from './dominio/marco-clinico-visual.ts';
+
 /**
  * Tipos e regras centrais do atlas anatômico.
  *
@@ -170,6 +173,7 @@ export interface BlocoModelo {
 }
 
 export interface Atlas {
+  versaoSchema: string;
   versao: string;
   sexo?: 'masculino';
   fonte?: string;
@@ -180,17 +184,64 @@ export interface Atlas {
   triangulos: number;
 }
 
-export type Vista = 'tres-quartos' | 'frente' | 'costas' | 'lateral';
+export type Vista =
+  | 'tres-quartos'
+  | 'frente'
+  | 'costas'
+  | 'lateral-direita'
+  | 'lateral-esquerda'
+  | 'superior'
+  | 'inferior';
 
 export interface EstadoCena {
   inspetorAberto?: boolean;
   explosao: number;
   sistemasVisiveis: IdSistema[];
   selecionados: string[];
+  /** Estruturas de contexto, realçadas com menor intensidade. */
+  relacionados: string[];
   isolar: boolean;
+  /**
+   * Quando ativo, oculta toda a anatomia que não pertence à seleção principal
+   * nem ao conjunto de estruturas relacionadas. É usado pelos guias de prova
+   * e rotas avançadas para transformar a orientação textual em visualização 3D.
+   */
+  filtrarContexto: boolean;
+  /** Destaque geométrico usado pelos marcos clínicos. */
+  destaqueClinico: DestaqueClinico | null;
+  /** Permite ocultar o realce sem sair do guia ou perder o filtro anatômico. */
+  realceClinicoVisivel: boolean;
+  /** Contador usado para solicitar novo enquadramento da câmera. */
+  foco: number;
   vista: Vista;
   rotacionar: boolean;
   reinicio: number;
+}
+
+/**
+ * Decide se uma peça deve ser renderizada no estado atual.
+ *
+ * Prioridades:
+ * 1. `isolar`: mostra somente a seleção principal;
+ * 2. `filtrarContexto`: mostra seleção + estruturas relacionadas do guia/rota;
+ * 3. modo normal: respeita sistemas visíveis e mantém seleção/relações visíveis.
+ */
+export function parteVisivelNoEstado(parte: Parte, estado: EstadoCena): boolean {
+  const selecionada = estado.selecionados.includes(parte.id);
+  const relacionada = estado.relacionados.includes(parte.id);
+
+  if (estado.isolar) return selecionada;
+  if (estado.filtrarContexto) return selecionada || relacionada;
+
+  return estado.sistemasVisiveis.includes(parte.sistema) || selecionada || relacionada;
+}
+
+export interface MetricasRenderizacao {
+  fps: number;
+  chamadas: number;
+  triangulos: number;
+  geometrias: number;
+  texturas: number;
 }
 
 export const SISTEMAS_VISIVEIS_PADRAO: IdSistema[] = [
@@ -280,13 +331,10 @@ interface AtlasOrigem {
  * Centralizar essa tradução evita espalhar nomes em inglês pelo restante do código.
  */
 export function normalizarAtlas(dados: unknown): Atlas {
-  const origem = dados as AtlasOrigem;
-
-  if (!origem || !Array.isArray(origem.parts) || !Array.isArray(origem.concepts)) {
-    throw new Error('O catálogo anatômico possui um formato inválido.');
-  }
+  const origem = validarManifestoAtlas(dados);
 
   return {
+    versaoSchema: origem.schemaVersion,
     versao: origem.version,
     sexo: origem.sex === 'male' ? 'masculino' : undefined,
     fonte: origem.source,

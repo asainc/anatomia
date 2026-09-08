@@ -6,7 +6,7 @@ import {mergeGeometries} from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import {criarLayoutExplosao} from './layout-explosao.ts';
 import {decodificarRespostaModelo} from './download-modelo.ts';
 import {DetectorToquePonteiro} from './toque-ponteiro.ts';
-import {SISTEMAS, type Atlas, type EstadoCena} from './anatomia.ts';
+import {SISTEMAS, parteVisivelNoEstado, type Atlas, type EstadoCena, type MetricasRenderizacao} from './anatomia.ts';
 
 interface PropriedadesCena {
   atlas: Atlas;
@@ -14,6 +14,7 @@ interface PropriedadesCena {
   aoSelecionar: (id: string) => void;
   aoProgredir: (percentual: number) => void;
   aoFalhar: (mensagem: string) => void;
+  aoMetricas?: (metricas: MetricasRenderizacao) => void;
 }
 
 /**
@@ -30,14 +31,17 @@ export default function CenaAnatomia({
   aoSelecionar,
   aoProgredir,
   aoFalhar,
+  aoMetricas,
 }: PropriedadesCena) {
   const elementoHospedeiro = useRef<HTMLDivElement>(null);
   const estadoAtualRef = useRef(estado);
   const selecionarRef = useRef(aoSelecionar);
+  const metricasRef = useRef(aoMetricas);
 
   // Refs evitam recriar a cena Three.js toda vez que o estado React muda.
   estadoAtualRef.current = estado;
   selecionarRef.current = aoSelecionar;
+  metricasRef.current = aoMetricas;
 
   useEffect(() => {
     const elemento = elementoHospedeiro.current!;
@@ -176,10 +180,12 @@ export default function CenaAnatomia({
     const dadosSelecao = new Uint8Array(larguraTextura * 4);
     const texturaSelecao = new T.DataTexture(dadosSelecao, larguraTextura, 1);
     texturaSelecao.needsUpdate = true;
+    const uniformeModoClinico = {value: 0};
 
     const materiais: T.Material[] = [];
     const geometrias: T.BufferGeometry[] = [];
     const malhasSelecao: (T.Mesh | undefined)[] = [];
+    const indicePartePorId = new Map(atlas.partes.map((parte, indice) => [parte.id, indice]));
     const centros = atlas.partes.map((parte) =>
       new T.Vector3()
         .fromArray(parte.limites[0])
@@ -224,6 +230,166 @@ export default function CenaAnatomia({
     marcadores.renderOrder = 10;
     marcadores.visible = false;
     cena.add(marcadores);
+
+    const grupoDestaqueClinico = new T.Group();
+    grupoDestaqueClinico.visible = false;
+    grupoDestaqueClinico.renderOrder = 14;
+    cena.add(grupoDestaqueClinico);
+
+    const limparObjetosDestaqueClinico = () => {
+      while (grupoDestaqueClinico.children.length) {
+        const filho = grupoDestaqueClinico.children[0];
+        filho.traverse((objeto) => {
+          if (objeto instanceof T.Mesh || objeto instanceof T.LineSegments || objeto instanceof T.LineLoop) {
+            objeto.geometry.dispose();
+            const material = objeto.material;
+            if (Array.isArray(material)) material.forEach((item) => item.dispose());
+            else material.dispose();
+          }
+        });
+        grupoDestaqueClinico.remove(filho);
+      }
+    };
+
+    const criarFormaPlana = (
+      forma: 'triangulo' | 'circulo' | 'anel' | 'capsula' | 'retangulo',
+      largura: number,
+      altura: number,
+    ): T.BufferGeometry => {
+      if (forma === 'circulo') return new T.CircleGeometry(largura / 2, 64);
+      if (forma === 'anel') {
+        return new T.RingGeometry(Math.max(0.01, largura / 2 - 0.03), largura / 2, 64);
+      }
+
+      const shape = new T.Shape();
+      if (forma === 'triangulo') {
+        shape.moveTo(0, altura / 2);
+        shape.lineTo(-largura / 2, -altura / 2);
+        shape.lineTo(largura / 2, -altura / 2);
+        shape.closePath();
+      } else if (forma === 'capsula') {
+        const raio = Math.min(altura / 2, largura / 3);
+        shape.absarc(-largura / 2 + raio, 0, raio, Math.PI / 2, (Math.PI * 3) / 2, true);
+        shape.absarc(largura / 2 - raio, 0, raio, (Math.PI * 3) / 2, Math.PI / 2, true);
+        shape.closePath();
+      } else {
+        const raio = Math.min(largura, altura) * 0.12;
+        shape.moveTo(-largura / 2 + raio, -altura / 2);
+        shape.lineTo(largura / 2 - raio, -altura / 2);
+        shape.quadraticCurveTo(largura / 2, -altura / 2, largura / 2, -altura / 2 + raio);
+        shape.lineTo(largura / 2, altura / 2 - raio);
+        shape.quadraticCurveTo(largura / 2, altura / 2, largura / 2 - raio, altura / 2);
+        shape.lineTo(-largura / 2 + raio, altura / 2);
+        shape.quadraticCurveTo(-largura / 2, altura / 2, -largura / 2, altura / 2 - raio);
+        shape.lineTo(-largura / 2, -altura / 2 + raio);
+        shape.quadraticCurveTo(-largura / 2, -altura / 2, -largura / 2 + raio, -altura / 2);
+        shape.closePath();
+      }
+      return new T.ShapeGeometry(shape, 32);
+    };
+
+    const posicionarNoEixo = (
+      objeto: T.Object3D,
+      eixo: 'frontal' | 'sagital' | 'transversal',
+    ) => {
+      objeto.rotation.set(0, 0, 0);
+      if (eixo === 'sagital') {
+        objeto.rotation.y = Math.PI / 2;
+      } else if (eixo === 'transversal') {
+        objeto.rotation.x = -Math.PI / 2;
+      }
+    };
+
+    const caixasTransformadasPorId = (ids: string[]) => {
+      const caixas: T.Box3[] = [];
+      ids.forEach((id) => {
+        const indice = indicePartePorId.get(id);
+        if (indice === undefined || dadosPartes[indice * 4 + 3] <= 0.5) return;
+        caixas.push(
+          limites[indice].clone().translate(
+            new T.Vector3(
+              dadosPartes[indice * 4],
+              dadosPartes[indice * 4 + 1],
+              dadosPartes[indice * 4 + 2],
+            ),
+          ),
+        );
+      });
+      return caixas;
+    };
+
+    const unirCaixas = (caixas: T.Box3[]) => {
+      const uniao = new T.Box3();
+      caixas.forEach((caixa) => uniao.union(caixa));
+      return uniao;
+    };
+
+    const atualizarDestaqueClinico = (estadoAtual: EstadoCena) => {
+      limparObjetosDestaqueClinico();
+      const destaque = estadoAtual.destaqueClinico;
+      if (!destaque || !estadoAtual.realceClinicoVisivel || destaque.partes.length === 0) {
+        grupoDestaqueClinico.visible = false;
+        return;
+      }
+
+      const caixas = caixasTransformadasPorId(destaque.partes);
+      if (!caixas.length) {
+        grupoDestaqueClinico.visible = false;
+        return;
+      }
+
+      const todos = unirCaixas(caixas);
+      const grupos = !destaque.bilateral
+        ? [caixas]
+        : [
+            caixas.filter((caixa) => caixa.getCenter(new T.Vector3()).x <= todos.getCenter(new T.Vector3()).x),
+            caixas.filter((caixa) => caixa.getCenter(new T.Vector3()).x > todos.getCenter(new T.Vector3()).x),
+          ].filter((grupo) => grupo.length > 0);
+
+      grupos.forEach((grupo) => {
+        const box = unirCaixas(grupo);
+        const centro = box.getCenter(new T.Vector3());
+        const geometriaMarco = criarFormaPlana(
+          destaque.forma,
+          destaque.largura,
+          destaque.altura,
+        );
+        const materialPreenchimento = new T.MeshBasicMaterial({
+          color: destaque.cor,
+          transparent: true,
+          opacity: 0.28,
+          depthWrite: false,
+          depthTest: false,
+          side: T.DoubleSide,
+          toneMapped: false,
+        });
+        const materialContorno = new T.LineBasicMaterial({
+          color: destaque.cor,
+          transparent: true,
+          opacity: 1,
+          depthWrite: false,
+          depthTest: false,
+          toneMapped: false,
+        });
+        const malha = new T.Mesh(geometriaMarco, materialPreenchimento);
+        const borda = new T.LineSegments(new T.EdgesGeometry(geometriaMarco, 8), materialContorno);
+        const grupoForma = new T.Group();
+        grupoForma.add(malha);
+        grupoForma.add(borda);
+        posicionarNoEixo(grupoForma, destaque.eixo);
+        const sinalX = Math.sign(centro.x) || 1;
+        const [dx, dy, dz] = destaque.deslocamento;
+        grupoForma.position.set(
+          centro.x + (destaque.espelharX ? dx * sinalX : dx),
+          centro.y + dy,
+          centro.z + dz,
+        );
+        grupoForma.renderOrder = 15;
+        grupoDestaqueClinico.add(grupoForma);
+      });
+
+      grupoDestaqueClinico.visible = grupoDestaqueClinico.children.length > 0;
+    };
 
     const dica = document.createElement('div');
     dica.className = 'part-hover';
@@ -286,15 +452,16 @@ export default function CenaAnatomia({
         shader.uniforms.partState = {value: texturaPartes};
         shader.uniforms.selectionState = {value: texturaSelecao};
         shader.uniforms.stateWidth = {value: larguraTextura};
+        shader.uniforms.clinicalMode = uniformeModoClinico;
         shader.vertexShader =
-          'attribute float partIndex; uniform sampler2D partState; uniform sampler2D selectionState; uniform float stateWidth; varying float partVisible; varying float partSelected;\n' +
+          'attribute float partIndex; uniform sampler2D partState; uniform sampler2D selectionState; uniform float stateWidth; varying float partVisible; varying float partSelected; varying float partRelated;\n' +
           shader.vertexShader;
         shader.vertexShader = shader.vertexShader.replace(
           '#include <begin_vertex>',
-          '#include <begin_vertex>\nvec2 stateUv = vec2((partIndex + 0.5) / stateWidth, 0.5); vec4 state = texture2D(partState, stateUv); transformed += state.xyz; partVisible = state.w; partSelected = texture2D(selectionState, stateUv).r;',
+          '#include <begin_vertex>\nvec2 stateUv = vec2((partIndex + 0.5) / stateWidth, 0.5); vec4 state = texture2D(partState, stateUv); transformed += state.xyz; partVisible = state.w; vec4 selection = texture2D(selectionState, stateUv); partSelected = selection.r; partRelated = selection.g;',
         );
         shader.fragmentShader =
-          'varying float partVisible; varying float partSelected;\n' +
+          'uniform float clinicalMode; varying float partVisible; varying float partSelected; varying float partRelated;\n' +
           shader.fragmentShader;
         shader.fragmentShader = shader.fragmentShader.replace(
           '#include <clipping_planes_fragment>',
@@ -302,7 +469,7 @@ export default function CenaAnatomia({
         );
         shader.fragmentShader = shader.fragmentShader.replace(
           '#include <color_fragment>',
-          '#include <color_fragment>\ndiffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.42, 0.85, 0.78), partSelected * 0.75);',
+          '#include <color_fragment>\nfloat intensidadeGuia = 1.0 - clinicalMode; float luminanciaContexto = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722)); diffuseColor.rgb = mix(diffuseColor.rgb, vec3(luminanciaContexto), clinicalMode * 0.22); diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.82), clinicalMode * 0.10); diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.55, 0.73, 0.86), partRelated * 0.42 * intensidadeGuia); diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.42, 0.85, 0.78), partSelected * 0.78 * intensidadeGuia);',
         );
       };
 
@@ -444,6 +611,27 @@ export default function CenaAnatomia({
       }
     })();
 
+    /** Vetor de observação das vistas anatômicas predefinidas. */
+    const obterDirecaoVista = (vista: string) =>
+      vista === 'frente'
+        ? new T.Vector3(0, 0.02, 1)
+        : vista === 'costas'
+          ? new T.Vector3(0, 0.02, -1)
+          : vista === 'lateral-direita'
+            ? new T.Vector3(1, 0.02, 0)
+            : vista === 'lateral-esquerda'
+              ? new T.Vector3(-1, 0.02, 0)
+              : vista === 'superior'
+                ? new T.Vector3(0, 1, 0.001)
+                : vista === 'inferior'
+                  ? new T.Vector3(0, -1, 0.001)
+                  : new T.Vector3(0.35, 0.06, 1).normalize();
+
+    const ajustarEixoVerticalCamera = (vista: string) => {
+      const vertical = vista === 'superior' || vista === 'inferior';
+      camera.up.set(0, vertical ? 0 : 1, vertical ? -1 : 0);
+    };
+
     /** Ajusta câmera conforme a vista escolhida e o grau de explosão. */
     const ajustarCamera = (vista: string, intensidadeLayout = 0) => {
       const proporcao = camera.aspect;
@@ -481,14 +669,7 @@ export default function CenaAnatomia({
         vista = 'frente';
       }
 
-      const direcao =
-        vista === 'frente'
-          ? new T.Vector3(0, 0.02, 1)
-          : vista === 'costas'
-            ? new T.Vector3(0, 0.02, -1)
-            : vista === 'lateral'
-              ? new T.Vector3(1, 0.02, 0)
-              : new T.Vector3(0.35, 0.06, 1).normalize();
+      const direcao = obterDirecaoVista(vista);
 
       controles.target.set(
         intensidadeLayout > 0.1 && elemento.clientWidth > 767
@@ -497,6 +678,7 @@ export default function CenaAnatomia({
         intensidadeLayout > 0.1 || movel ? 0.85 : 0.68,
         0,
       );
+      ajustarEixoVerticalCamera(vista);
       camera.position
         .copy(controles.target)
         .addScaledVector(direcao, distancia);
@@ -649,6 +831,8 @@ export default function CenaAnatomia({
 
     const relogio = new T.Clock();
     let ultimaIntensidadeLayout = -1;
+    let quadrosMetricas = 0;
+    let instanteMetricas = performance.now();
 
     const animar = () => {
       if (descartado) {
@@ -656,14 +840,33 @@ export default function CenaAnatomia({
       }
 
       quadroAnimacao = requestAnimationFrame(animar);
+      quadrosMetricas += 1;
+      const agoraMetricas = performance.now();
+      if (agoraMetricas - instanteMetricas >= 750) {
+        const intervalo = agoraMetricas - instanteMetricas;
+        metricasRef.current?.({
+          fps: Math.round((quadrosMetricas * 1000) / intervalo),
+          chamadas: renderizador.info.render.calls,
+          triangulos: renderizador.info.render.triangles,
+          geometrias: renderizador.info.memory.geometries,
+          texturas: renderizador.info.memory.textures,
+        });
+        quadrosMetricas = 0;
+        instanteMetricas = agoraMetricas;
+      }
       const delta = Math.min(relogio.getDelta(), 0.05);
       const estadoAtual = estadoAtualRef.current;
       const mudouVisibilidade =
         ultimoEstado?.sistemasVisiveis !== estadoAtual.sistemasVisiveis ||
         ultimoEstado?.selecionados !== estadoAtual.selecionados ||
-        ultimoEstado?.isolar !== estadoAtual.isolar;
+        ultimoEstado?.isolar !== estadoAtual.isolar ||
+        ultimoEstado?.filtrarContexto !== estadoAtual.filtrarContexto ||
+        ultimoEstado?.relacionados !== estadoAtual.relacionados ||
+        ultimoEstado?.destaqueClinico !== estadoAtual.destaqueClinico ||
+        ultimoEstado?.realceClinicoVisivel !== estadoAtual.realceClinicoVisivel;
       const emMovimento =
         Math.abs(nivelExplosao - estadoAtual.explosao) > 0.0001;
+      uniformeModoClinico.value = estadoAtual.destaqueClinico && estadoAtual.realceClinicoVisivel ? 1 : 0;
 
       if (emMovimento) {
         nivelExplosao = T.MathUtils.damp(
@@ -676,12 +879,10 @@ export default function CenaAnatomia({
       }
 
       if (mudouVisibilidade || emMovimento || ultimaIntensidadeLayout < 0) {
-        const sistemasVisiveis = new Set(estadoAtual.sistemasVisiveis);
         const selecao = new Set(estadoAtual.selecionados);
+        const relacionados = new Set(estadoAtual.relacionados);
         const partesVisiveis = atlas.partes.filter((parte) =>
-          estadoAtual.isolar
-            ? selecao.has(parte.id)
-            : sistemasVisiveis.has(parte.sistema) || selecao.has(parte.id),
+          parteVisivelNoEstado(parte, estadoAtual),
         );
         const proximaChaveLayout =
           partesVisiveis.map((parte) => parte.id).join(',') +
@@ -754,15 +955,12 @@ export default function CenaAnatomia({
               deslocamentoX,
               deslocamentoY,
               deslocamentoZ,
-              (estadoAtual.isolar
-                ? selecionada
-                : sistemasVisiveis.has(parte.sistema) || selecionada)
-                ? 1
-                : 0,
+              parteVisivelNoEstado(parte, estadoAtual) ? 1 : 0,
             ],
             indice * 4,
           );
           dadosSelecao[indice * 4] = selecionada ? 255 : 0;
+          dadosSelecao[indice * 4 + 1] = relacionados.has(parte.id) ? 255 : 0;
 
           posicoesMarcadores.set(
             dadosPartes[indice * 4 + 3] > 0.5
@@ -790,6 +988,7 @@ export default function CenaAnatomia({
         texturaPartes.needsUpdate = true;
         texturaSelecao.needsUpdate = true;
         geometriaMarcadores.attributes.position.needsUpdate = true;
+        atualizarDestaqueClinico(estadoAtual);
         ultimoEstado = estadoAtual;
         ultimaIntensidadeLayout = nivelExplosao;
         precisaRenderizar = true;
@@ -811,20 +1010,23 @@ export default function CenaAnatomia({
         );
       }
 
-      const chaveIsolamento = estadoAtual.isolar
-        ? `${estadoAtual.selecionados.join(',')}:${estadoAtual.reinicio}:${
-            estadoAtual.inspetorAberto
-          }:${camera.aspect}`
+      const chaveIsolamento = estadoAtual.selecionados.length
+        ? `${estadoAtual.isolar}:${estadoAtual.filtrarContexto}:${estadoAtual.foco}:${estadoAtual.selecionados.join(',')}:${
+            estadoAtual.filtrarContexto ? estadoAtual.relacionados.join(',') : ''
+          }:${estadoAtual.reinicio}:${estadoAtual.inspetorAberto}:${camera.aspect}`
         : '';
 
       if (
         chaveIsolamento !== ultimaChaveIsolamento ||
-        (estadoAtual.isolar && emMovimento)
+        (estadoAtual.selecionados.length > 0 && emMovimento)
       ) {
-        if (estadoAtual.isolar) {
+        if (estadoAtual.selecionados.length) {
           const caixa = new T.Box3();
           atlas.partes.forEach((parte, indice) => {
-            if (estadoAtual.selecionados.includes(parte.id)) {
+            const pertenceAoEnquadramento =
+              estadoAtual.selecionados.includes(parte.id) ||
+              (estadoAtual.filtrarContexto && estadoAtual.relacionados.includes(parte.id));
+            if (pertenceAoEnquadramento) {
               caixa.union(
                 limites[indice]
                   .clone()
@@ -895,13 +1097,10 @@ export default function CenaAnatomia({
             );
             controles.maxDistance = Math.max(40, distancia * 2);
             controles.target.copy(centro);
+            ajustarEixoVerticalCamera(estadoAtual.vista);
             camera.position
               .copy(centro)
-              .add(
-                new T.Vector3(0.2, 0.1, 1)
-                  .normalize()
-                  .multiplyScalar(distancia),
-              );
+              .add(obterDirecaoVista(estadoAtual.vista).multiplyScalar(distancia));
             controles.update();
             precisaRenderizar = true;
           }
@@ -922,10 +1121,10 @@ export default function CenaAnatomia({
         plataforma.visible =
         anel.visible =
         anelInterno.visible =
-          nivelExplosao < 0.5 && !estadoAtual.isolar;
+          nivelExplosao < 0.5 && !estadoAtual.isolar && !estadoAtual.filtrarContexto;
       marcadores.visible = nivelExplosao > 0.75;
       controles.autoRotate =
-        estadoAtual.rotacionar && !estadoAtual.isolar && nivelExplosao < 0.4;
+        estadoAtual.rotacionar && !estadoAtual.isolar && !estadoAtual.filtrarContexto && nivelExplosao < 0.4;
       controles.autoRotateSpeed = 0.65;
       controles.update();
 
@@ -1029,6 +1228,7 @@ export default function CenaAnatomia({
       cancelAnimationFrame(quadroAnimacao);
       observador.disconnect();
       controles.dispose();
+      limparObjetosDestaqueClinico();
       geometrias.forEach((geometria) => geometria.dispose());
       materiais.forEach((material) => material.dispose());
       cena.traverse((objeto) => {

@@ -1,6 +1,6 @@
 {
   "name": "atlas-anatomico-3d",
-  "version": "0.1.0",
+  "version": "0.7.0",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
@@ -15,7 +15,15 @@
     "validar:traducao": "node scripts/validar-traducao-anatomica.mjs",
     "validar:atlas": "node scripts/validar-atlas.mjs",
     "validar:interacoes": "node --experimental-strip-types scripts/validar-interacoes.mjs",
-    "validar": "npm run verificar && npm run validar:traducao && npm run validar:atlas && npm run validar:interacoes && npm run build"
+    "validar": "npm run validar:dependencias && npm run verificar && npm run testar:schema && npm run testar:dominio && npm run testar:residencia && npm run testar:guias && npm run testar:marcos && npm run testar:filtro-modelo && npm run testar:avancado && npm run validar:traducao && npm run validar:atlas && npm run validar:interacoes && npm run build",
+    "testar:dominio": "node --experimental-strip-types scripts/testar-dominio.mjs",
+    "validar:dependencias": "node scripts/validar-dependencias.mjs",
+    "testar:schema": "node --experimental-strip-types scripts/testar-schema.mjs",
+    "testar:residencia": "node --experimental-strip-types scripts/testar-residencia.mjs",
+    "testar:guias": "node --experimental-strip-types scripts/testar-guias-estudo.mjs",
+    "testar:filtro-modelo": "node --experimental-strip-types scripts/testar-filtro-modelo.mjs",
+    "testar:marcos": "node --experimental-strip-types scripts/testar-marcos-clinicos.mjs",
+    "testar:avancado": "node --experimental-strip-types scripts/testar-estudo-avancado.mjs"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",
@@ -32,16 +40,16 @@
     "react-day-picker": "9.8.1",
     "react-dom": "19.2.6",
     "react-resizable-panels": "4.5.8",
-    "react-server-dom-webpack": "^19.2.6",
+    "react-server-dom-webpack": "19.2.6",
     "recharts": "3.8.0",
     "shadcn": "4.18.0",
     "tailwind-merge": "3.6.0",
     "three": "^0.159.0",
     "tw-animate-css": "1.4.0",
-    "vinext": "^1.0.0-beta.9"
+    "vinext": "1.0.0-beta.5"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "^1.54.4",
+    "@cloudflare/vite-plugin": "1.37.1",
     "@cloudflare/workers-types": "4.20260515.1",
     "@openai/sites-vite-plugin": "0.2.0",
     "@tailwindcss/postcss": "4.2.1",
@@ -56,8 +64,8 @@
     "oxlint-tsgolint": "7.0.2001",
     "tailwindcss": "4.2.1",
     "typescript": "5.9.3",
-    "vite": "^8.2.2",
-    "wrangler": "^4.129.0"
+    "vite": "8.0.13",
+    "wrangler": "4.92.0"
   },
   "type": "module",
   "license": "MIT"

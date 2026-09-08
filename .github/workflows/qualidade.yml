@@ -1,0 +1,36 @@
+name: Qualidade
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  validar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Obter código
+        uses: actions/checkout@v4
+      - name: Configurar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Instalar exatamente o lockfile
+        run: npm ci
+      - name: Validar dependências críticas
+        run: npm run validar:dependencias
+      - name: Validar tipos e domínio
+        run: |
+          npm run verificar
+          npm run testar:schema
+          npm run testar:dominio
+          npm run testar:residencia
+      - name: Validar dados anatômicos
+        run: |
+          npm run validar:traducao
+          npm run validar:atlas
+          npm run validar:interacoes
+      - name: Gerar build de produção
+        run: npm run build

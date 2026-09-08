@@ -1,31 +1,29 @@
-# Arquitetura do projeto
+# Arquitetura do projeto — V2
 
 ## 1. Visão geral
 
-O projeto é uma aplicação web estática. Não existe backend obrigatório.
+O projeto continua sendo uma aplicação web estática, sem backend obrigatório.
 
 ```text
 Navegador
    │
    ├── React / TypeScript
-   │      ├── interface
-   │      ├── estado
-   │      └── busca/seleção
+   │      ├── app/pagina.tsx                 → orquestração da interface
+   │      ├── app/dominio/                   → busca, classificação e schema
+   │      ├── app/servicos/                  → preferências e URL
+   │      └── app/componentes/               → árvore, aprendizado e métricas
    │
    ├── Three.js / WebGL
-   │      └── renderização 3D
+   │      └── app/cena.tsx                   → renderização, picking e câmera
    │
    └── arquivos estáticos
           ├── atlas.json
+          ├── atlas.en.json
           ├── body-*.bin
           └── body-*.bin.gz
 ```
 
-## 2. Ponto de entrada
-
-`web/main.tsx` localiza o elemento `#root` e monta `PaginaInicial`.
-
-Fluxo:
+## 2. Fluxo de inicialização
 
 ```text
 web/index.html
@@ -33,170 +31,216 @@ web/index.html
 web/main.tsx
    ↓
 app/pagina.tsx
+   ↓ fetch /models/atlas.json
+app/dominio/schema-atlas.ts
    ↓
-app/cena.tsx
+app/anatomia.ts / normalizarAtlas
+   ↓
+app/dominio/catalogo-anatomico.ts
+   ↓
+app/cena.tsx + interface
 ```
 
-## 3. Carregamento do atlas
+O manifesto é validado antes de ser convertido para o modelo interno.
 
-`app/pagina.tsx` requisita:
+## 3. Manifesto e versionamento
 
-```text
-/models/atlas.json
+O gerador grava:
+
+```json
+{
+  "schemaVersion": "2.0",
+  "locale": "pt-BR",
+  "sourceLocale": "en"
+}
 ```
 
-O arquivo mantém o contrato original do BodyParts3D. Em seguida, `normalizarAtlas`, definido em `app/anatomia.ts`, converte o contrato externo para o modelo interno em português.
+`app/dominio/schema-atlas.ts` valida campos obrigatórios, tipos numéricos, limites 3D, chunks, conceitos e partes. O validador é implementado em TypeScript puro para evitar dependência adicional.
 
-Exemplo conceitual:
+## 4. Modelo interno
+
+`app/anatomia.ts` centraliza:
+
+- `Atlas`;
+- `Parte`;
+- `Conceito`;
+- `IdSistema`;
+- `EstadoCena`;
+- `Vista`;
+- descrições gerais dos sistemas.
+
+O estado da cena contém:
+
+- `explosao`;
+- `sistemasVisiveis`;
+- `selecionados`;
+- `relacionados`;
+- `isolar`;
+- `foco`;
+- `vista`;
+- `rotacionar`;
+- `reinicio`;
+- `inspetorAberto`.
+
+## 5. Domínio anatômico
+
+`app/dominio/catalogo-anatomico.ts` cria uma camada derivada a partir do atlas.
+
+Cada conceito recebe, para navegação:
+
+- sistema;
+- região inferida;
+- categoria inferida;
+- aliases;
+- termos de busca;
+- nome latino quando disponível no catálogo local de termos frequentes.
+
+Essa classificação é educacional e determinística. Ela não altera IDs nem geometria científica.
+
+## 6. Busca
+
+A busca calcula pontuação combinando:
+
+1. igualdade exata;
+2. prefixo;
+3. ocorrência no nome;
+4. tokens presentes em aliases/FMA/região/categoria;
+5. aproximação Levenshtein limitada a consultas curtas.
+
+Isso permite tolerância a acentos, sinônimos e pequenos erros sem servidor ou modelo de IA.
+
+## 7. Hierarquia
+
+A função `construirHierarquia` agrupa:
 
 ```text
-parts        → partes
-concepts     → conceitos
-chunks       → blocos
-system       → sistema
-vertexCount  → quantidadeVertices
-indexCount   → quantidadeIndices
+Sistema
+  └── Região
+       └── Categoria
+            └── Conceito
 ```
 
-Essa adaptação foi centralizada para evitar alterações no arquivo científico de origem e reduzir o risco de inconsistência.
+`app/componentes/arvore-anatomica.tsx` renderiza essa árvore com `<details>/<summary>`, mantendo navegação acessível e sem dependência extra.
 
-## 4. Estado principal
+## 8. Renderização 3D
 
-O tipo `EstadoCena` concentra o estado visual:
+`app/cena.tsx` preserva a estratégia de performance original:
 
-- `explosao`: nível de separação das estruturas;
-- `sistemasVisiveis`: sistemas atualmente exibidos;
-- `selecionados`: IDs das estruturas selecionadas;
-- `isolar`: informa se somente a seleção deve aparecer;
-- `vista`: orientação da câmera;
-- `rotacionar`: habilita rotação automática;
-- `reinicio`: contador usado para forçar reposicionamento da câmera;
-- `inspetorAberto`: informa à cena que o painel de detalhes ocupa espaço.
+- geometrias combinadas por sistema para renderização;
+- malhas individuais fora da cena para raycasting;
+- texturas GPU para estado por peça;
+- chunks binários carregados em paralelo.
 
-## 5. Renderização 3D
-
-`app/cena.tsx` é responsável por:
-
-- criar `WebGLRenderer`;
-- criar câmera e `OrbitControls`;
-- configurar iluminação;
-- baixar blocos binários;
-- criar geometrias Three.js;
-- combinar geometrias para reduzir chamadas de desenho;
-- atualizar visibilidade e deslocamento por textura GPU;
-- fazer raycasting para seleção;
-- adaptar a câmera a desktop, celular e painel de detalhes;
-- liberar recursos de GPU ao desmontar o componente.
-
-## 6. Estratégia de desempenho
-
-Renderizar mais de duas mil malhas como objetos independentes teria custo alto. O projeto utiliza duas representações:
-
-1. **malhas combinadas** para renderização;
-2. **malhas individuais não adicionadas à cena** para seleção precisa.
-
-O estado de cada estrutura é enviado ao shader por texturas:
+Textura de estado:
 
 ```text
-RGB → deslocamento X/Y/Z
+RGB → deslocamento XYZ
 A   → visibilidade
 ```
 
-Uma segunda textura marca a seleção.
+Textura de seleção:
 
-Essa estratégia reduz chamadas de desenho sem perder a capacidade de clicar em estruturas específicas.
+```text
+R → estrutura principal
+G → estrutura relacionada/comparada
+```
 
-## 7. Modo explodido
+O shader aplica um realce mais forte no canal principal e um realce secundário para contexto.
 
-`app/layout-explosao.ts` calcula células 2D para cada estrutura visível.
+## 9. Câmera
 
-Objetivo:
+A cena oferece vistas:
 
-- evitar sobreposição;
-- adaptar o layout à proporção da tela;
-- manter cada estrutura individualmente acessível.
+- três quartos;
+- anterior;
+- posterior;
+- lateral direita;
+- lateral esquerda;
+- superior;
+- inferior.
 
-A cena interpola a posição original até a posição calculada pelo layout.
+Ao mudar a seleção, `foco` é incrementado e a câmera enquadra as caixas 3D das peças selecionadas. O enquadramento leva em conta painel de detalhes, mobile e landscape.
 
-## 8. Seleção por ponteiro
+## 10. Modo explodido
 
-`app/toque-ponteiro.ts` evita interpretar um arraste como clique.
+`app/layout-explosao.ts` continua calculando uma distribuição 2D sem sobreposição. A cena interpola a posição original até a célula de destino conforme o slider.
 
-A classe `DetectorToquePonteiro` observa:
+## 11. Preferências
 
-- distância percorrida;
-- quantidade de ponteiros ativos;
-- cancelamento do evento.
+`app/servicos/preferencias.ts` grava em `localStorage`:
 
-Somente um toque curto e individual pode selecionar uma estrutura.
+- explosão;
+- sistemas visíveis;
+- vista;
+- exibição de métricas.
 
-## 9. Download dos modelos
+## 12. Navegação por URL
 
-`app/download-modelo.ts` trata dois comportamentos possíveis de hosts estáticos:
+`app/servicos/navegacao-url.ts` usa o hash:
 
-- `.gz` entregue ainda compactado;
-- `.gz` automaticamente descompactado por `Content-Encoding`.
+```text
+#estrutura=FMA:...
+```
 
-A assinatura gzip é verificada antes de aplicar `DecompressionStream`.
+Isso permite compartilhar uma estrutura sem precisar de backend ou roteador adicional.
 
-Também é validado o tamanho final do buffer.
+## 13. Métricas de renderização
 
-## 10. Busca
+`app/cena.tsx` lê `renderer.info` e publica periodicamente:
 
-A busca compara:
+- FPS calculado;
+- draw calls;
+- triângulos;
+- geometrias;
+- texturas.
 
-- nome oficial da fonte;
-- tradução conhecida em português;
-- identificador do conceito.
+## 14. Testes e validações
 
-A normalização remove acentos e converte para minúsculas.
+- `validar-dependencias.mjs`: versões React/RSC;
+- `testar-schema.mjs`: contrato do manifesto;
+- `testar-dominio.mjs`: classificação, aliases e busca;
+- `validar-traducao-anatomica.mjs`: localização integral;
+- `validar-atlas.mjs`: integridade binária;
+- `validar-interacoes.mjs`: layout explodido, busca, picking lógico e gestos.
 
-## 11. Integração opcional com ferramentas do navegador
+## 15. CI
 
-`app/ferramentas-agente.ts` usa `document.modelContext.registerTool` somente quando essa API existe.
+`.github/workflows/qualidade.yml` executa `npm ci`, typecheck, testes, validações e build em push/pull request.
 
-Se a capacidade não estiver disponível, a aplicação continua funcionando normalmente.
+## 16. Limites conhecidos
 
-## 12. Componentes de interface
+- BodyParts3D representa uma referência masculina adulta;
+- região/categoria/relação são classificações locais para navegação;
+- nomes latinos existem apenas para um conjunto comum nesta V2;
+- o conteúdo é educacional e não clínico;
+- o desempenho final depende da GPU e do navegador.
 
-`components/ui/` contém componentes derivados do ecossistema shadcn/ui. Nomes de propriedades exigidos pelas bibliotecas foram preservados para facilitar atualização e compatibilidade com upstream.
+## Camada de estudo para residência
 
-Textos visíveis e rótulos de acessibilidade relevantes foram traduzidos.
+A versão 0.3.0 adiciona uma camada de estudo sem acoplar regras pedagógicas ao renderizador 3D:
 
-## 13. Scripts de preparação dos modelos
+- `app/dominio/estudo-residencia.ts`: banco elegível, geração de questões, revisão espaçada, caderno de erros e métricas;
+- `app/componentes/central-residencia.tsx`: fluxo visual de treino/simulado;
+- `app/servicos/progresso-residencia.ts`: persistência local;
+- `pagina.tsx`: somente conecta a questão ativa à seleção/destaque do modelo 3D.
 
-### `converter-anatomia.py`
+Essa separação permite testar o algoritmo de estudo sem inicializar React ou WebGL.
 
-Lê OBJ e metadados, converte coordenadas e cria o manifesto/binários iniciais.
+## Central de Estudo Avançado — 0.6.0
 
-### `otimizar-anatomia.mjs`
+A camada avançada é separada do renderizador:
 
-Simplifica malhas e reorganiza os buffers.
+```text
+app/
+├── dominio/
+│   ├── estudo-detalhado.ts
+│   └── rotas-estudo-avancado.ts
+└── componentes/
+    └── central-estudo-avancado.tsx
+```
 
-### `compactar-modelos.mjs`
+`rotas-estudo-avancado.ts` define as rotas pedagógicas e resolve cada etapa contra o índice anatômico real. Assim, o conteúdo educacional nunca injeta geometrias fictícias no Three.js.
 
-Gera arquivos gzip.
+`central-estudo-avancado.tsx` cuida de filtros, pesquisa, navegação por etapas e envio da seleção principal/contextual para a cena.
 
-### `gerar-atlas-ptbr.py` e `traducao_anatomica.py`
-
-Geram, de forma determinística, os nomes anatômicos de exibição em PT-BR e preservam `nameEn` para rastreabilidade.
-
-### `validar-traducao-anatomica.mjs`
-
-Percorre todos os conceitos/partes, bloqueia regressões de idioma e confere casos anatômicos obrigatórios.
-
-### `validar-atlas.mjs`
-
-Valida integridade estrutural e binária.
-
-### `validar-interacoes.mjs`
-
-Valida regras importantes de interação sem depender do navegador.
-
-## 14. Limites conhecidos
-
-- o BodyParts3D é uma referência masculina adulta e não representa toda variação humana;
-- os nomes originais da fonte são majoritariamente em inglês, mas ficam restritos a `atlas.en.json`/`nameEn`;
-- os nomes de exibição do manifesto carregado são localizados integralmente para PT-BR;
-- a aplicação é educacional e não clínica;
-- o desempenho final depende de GPU, navegador e dispositivo.
+A cena continua recebendo somente IDs de peças em `selecionados` e `relacionados`, preservando o mecanismo eficiente de realce por GPU já utilizado pelo projeto.

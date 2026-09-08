@@ -90,3 +90,27 @@ npm run validar:atlas
 npm run validar:interacoes
 npm run build
 ```
+
+## DT-006 — Evoluir sem trocar o núcleo de renderização
+
+**Decisão:** preservar geometrias combinadas, raycasting por malhas individuais e estado por textura GPU.
+
+**Motivo:** a arquitetura existente já reduz draw calls e suporta milhares de peças. A V2 adiciona foco, contexto e métricas sobre esse núcleo, evitando uma regressão de performance causada por milhares de objetos renderizados separadamente.
+
+## DT-007 — Busca e hierarquia sem backend
+
+**Decisão:** implementar classificação, aliases e fuzzy curto localmente em TypeScript.
+
+**Motivo:** manter o atlas estático, rápido, auditável e funcional offline depois do carregamento.
+
+## DT-008 — Validação de schema sem nova dependência
+
+**Decisão:** usar um validador TypeScript determinístico em `app/dominio/schema-atlas.ts`.
+
+**Motivo:** reduzir superfície de dependências após o conflito ERESOLVE, mantendo mensagens de erro acionáveis e contrato versionado.
+
+## DT-009 — React/RSC com versões exatas
+
+**Decisão:** manter `react`, `react-dom` e `react-server-dom-webpack` na mesma versão exata e validar isso por script/CI.
+
+**Motivo:** impedir atualização parcial e repetição do conflito de peer dependency observado no npm.
